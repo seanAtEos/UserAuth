@@ -1,0 +1,9 @@
+{% extends 'base.jinja2' %}
+{% block content %}
+    <h1>{{title}}</h1>
+    <ul>
+      {% for item in users %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+{% endblock %}
