@@ -9,13 +9,26 @@ from deform import Form
 
 from pyramid.httpexceptions import HTTPFound
 
+from pyramid.security import (
+    authenticated_userid,
+    remember,
+    forget
+    )
+
 from .models import (
     DBSession,
     User,
+    hash_password
     )
 
 
 class SignupForm(colander.MappingSchema):
+    choices = (
+        ('viewer', 'Viewer'),
+        ('fool', 'Fool'),
+        ('king', 'King'),
+        ('god', 'God')
+        )
     firstname = colander.SchemaNode(
         colander.String(),
         title='First Name'
@@ -23,7 +36,7 @@ class SignupForm(colander.MappingSchema):
     lastname = colander.SchemaNode(
         colander.String(),
         title='Last Name')
-    emailadd = colander.SchemaNode(
+    emailaddress = colander.SchemaNode(
         colander.String(),
         title='Email Address'
         )
@@ -36,6 +49,12 @@ class SignupForm(colander.MappingSchema):
         widget=deform.widget.CheckedPasswordWidget(size=20),
         validator=colander.Length(min=8)
         )
+    credentials = colander.SchemaNode(
+                colander.String(),
+                validator=colander.OneOf([x[0] for x in choices]),
+                widget=deform.widget.RadioChoiceWidget(values=choices),
+                title='Choose your credentials',
+                description='Select a credentials')
 
 class LoginForm(colander.MappingSchema):
     username = colander.SchemaNode(
@@ -51,8 +70,9 @@ class UserAuthViews(object):
         self.request = request
 
     @view_config(route_name='home', renderer='templates/home.jinja2')
-    def my_view(self):
-        return {'title': 'Home'}
+    def homeView(self):
+        print authenticated_userid(self.request)
+        return {'title': 'Home', 'userid': authenticated_userid(self.request)}
 
     @view_config(route_name='signup', renderer='templates/signup.jinja2')
     def signupView(self):
@@ -63,25 +83,28 @@ class UserAuthViews(object):
             controls = self.request.POST.items()
             try:
                 appstruct = signupForm.validate(controls)
-                print appstruct
             except:
                 return{'title': 'Sign Up', 'form': signupForm}
 
             username = appstruct['username']
-            password = appstruct['password']
-            firstname = appstruct['firstname']
-            lastname = appstruct['lastname']
-            emailadd = appstruct['emailadd']
-
             session = DBSession()
-            newestID = session.query(User).order_by(User.id.desc()).first().id + 1
-            newusr = User(id=newestID, username=username, password=password, firstname=firstname, lastname=lastname, email=emailadd)
-            
-            # Validate that user is uniquie as determined by criteria
-            # If newusr is valid, add to db
-            session.add(newusr)
+            if session.query(User).filter(User.username == username).first():
+                return{'title': 'Sign Up', 'form': signupForm, 'message': 'Username already taken'}
 
-            return HTTPFound(location = self.request.route_url('viewAllUsers'))
+            newestID = session.query(User).order_by(User.id.desc()).first().id + 1
+            newusr = User(
+                id       =newestID,
+                username = username,
+                password = appstruct['password'],
+                firstname= appstruct['firstname'],
+                lastname = appstruct['lastname'],
+                email    = appstruct['emailaddress'],
+                credentials = appstruct['credentials']
+            )
+
+            headers = remember(self.request, username)
+            session.add(newusr)
+            return HTTPFound(location = self.request.route_url('viewAllUsers'), headers=headers)
             
         return{'title': 'Sign Up', 'form': signupForm}
 
@@ -96,14 +119,23 @@ class UserAuthViews(object):
             try:
                 appstruct = loginForm.validate(controls)
             except:
-                return {'title': 'Login', 'form': loginForm}
+                return {'title': 'Login', 'form': loginForm, 'message': 'Login Unsuccessful'}
             
-            usrname = appstruct['username']
-            pswrd = appstruct['password']
-
-            # check to see if user and password exist and match, if so, then give them some credentials
+            username = appstruct['username']
+            password = appstruct['password']
+            
+            if User.check_password(username, password):
+                headers = remember(self.request, username)
+                return HTTPFound(location=self.request.route_url('home'), headers=headers)
+            else:
+                return {'title': 'Login', 'userid': authenticated_userid(self.request), 'form': loginForm, 'message': 'Login Unsuccessful'}                
 
         return {'title': 'Login', 'form': loginForm}
+
+    @view_config(route_name='logout', renderer='templates/logout.jinja2')
+    def logoutView(self):
+        headers = forget(self.request)
+        return HTTPFound(location=self.request.route_url('home'), headers=headers)
 
 
     @view_config(route_name='viewAllUsers', renderer='templates/allusers.jinja2')
@@ -112,13 +144,29 @@ class UserAuthViews(object):
         session = DBSession()
         for instance in session.query(User).order_by(User.id):
             print instance.id, instance.username, instance.password
-            usrs.append(str(instance.id) + ' ' + instance.username + ' ' + instance.password + ' ' + instance.firstname + ' ' + instance.lastname + ' ' + instance.email)
+            usrs.append(str(instance.id) + ' ' + instance.username + ' ' + instance.password + ' ' + instance.firstname + ' ' + instance.lastname + ' ' + instance.email + ' ' + instance.credentials)
+        return{'title': 'View All Users', 'userid': authenticated_userid(self.request), 'users': usrs}
 
-        return{'title': 'View All Users', 'users': usrs}
 
-    @view_config(route_name='secret', renderer='templates/secret.jinja2', permission='god')
-    def secretView(self):
-        return {'title': 'Secret Page'}
+    @view_config(route_name='fool', renderer='templates/fool.jinja2', permission='fool')
+    def foolsView(self):
+        return {'title': "Fool's Page", 'userid': authenticated_userid(self.request)}
+
+
+    @view_config(route_name='king', renderer='templates/king.jinja2', permission='king')
+    def kingsView(self):
+        return {'title': "King's Page", 'userid': authenticated_userid(self.request)}
+
+
+    @view_config(route_name='god', renderer='templates/god.jinja2', permission='god')
+    def godsView(self):
+        return {'title': "God's Page", 'userid': authenticated_userid(self.request)}
+
+    @view_config(route_name='settings', renderer='settings.jinja2', permission='settingsConfiguration')
+    def settingsView(self):
+        return {}
+
+
 
 conn_err_msg = """\
 Pyramid is having a problem using your SQL database.  The problem

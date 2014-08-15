@@ -12,10 +12,17 @@
   			<li><a href='/'>Home</a></li>
 				<li><a href='/signup'>Sign Up</a></li>
   			<li><a href='/login'>Login</a></li>
+				<!--<li><a href='/logout'>Log Out</a></li>-->
 				<li><a href='/allusers'>All Users</a></li>
-  			<li><a href='/secret'>Secret</a></li>
+  			<li><a href='/fool'>Fool's Page</a></li>
   		</ul>
+			{% if userid %}
+				<p>Logged in as {{ userid }}</p>
+				<a href='/logout'>Log Out</a>
+				<a href='/settings/{{userid}}'>Settings</a>
+			{% endif %}
   	</nav>
+		
   	{% block content %}{% endblock %}
   </body>
 </html>

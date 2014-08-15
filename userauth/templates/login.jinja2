@@ -1,6 +1,7 @@
 {% extends 'base.jinja2' %}
 {% block content %}
     <h1>{{title}}</h1>
+    {{ message }}
     <div id="login-form">
         {{ form.render() | safe }}
     </div>
